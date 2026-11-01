@@ -99,10 +99,11 @@ def upsert(conn: sqlite3.Connection, raw: dict) -> tuple[str, int]:
         conn.execute(
             """UPDATE listings SET links=?, price=?, price_history=?, features=?, last_seen=?,
                lat=?, lon=?, geo_precision=?, title=?, description=?, surface=?, land=?, rooms=?,
-               bedrooms=?, type=?, postcode=?, city=?, citycode=?, address=?, photo=? WHERE id=?""",
+               bedrooms=?, type=?, postcode=?, city=?, citycode=?, address=?, photo=?,
+               demo = demo AND ? WHERE id=?""",
             (json.dumps(links, ensure_ascii=False), item.get("price") or match.get("price"),
              json.dumps(history), json.dumps(features), now, loc.get("lat"), loc.get("lon"),
-             loc.get("geo_precision"), *merged.values(), match["id"]))
+             loc.get("geo_precision"), *merged.values(), int(item.get("demo", False)), match["id"]))
         conn.commit()
         return "fusionnée", match["id"]
     cur = conn.execute(

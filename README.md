@@ -32,17 +32,19 @@ python -m unittest discover -s tests
 
 ## D'où viennent les annonces
 
-LeBonCoin, SeLoger, PAP et Logic-Immo bloquent les robots et interdisent l'aspiration dans leurs
-conditions d'utilisation. Le Nichoir ne les aspire donc pas : il lit ce qu'ils envoient.
+LeBonCoin, SeLoger, PAP, Logic-Immo et la plupart des portails bloquent les robots, et presque tous
+(Figaro Immobilier, Laforêt, Immobilier.notaires…) interdisent la lecture automatique dans leurs
+conditions d'utilisation. Le Nichoir ne les aspire donc pas.
 
-1. **Alertes e-mail** (source principale). Créer sur chaque site une alerte large (secteur sud-ouest
-   de Lyon, budget, maison) envoyée à une adresse dédiée, puis renseigner `NICHOIR_IMAP_*` dans `.env`
-   (pour Gmail : un « mot de passe d'application »). Le Nichoir découpe chaque e-mail en annonces,
-   sans le marquer comme lu.
-   Sites conseillés : LeBonCoin, SeLoger, PAP, Bien'ici, Logic-Immo, Espaces Atypiques, Figaro Immobilier.
-2. **Flux RSS / Atom** dans `NICHOIR_RSS_FEEDS`, pour les agences qui en publient
-   (le flux d'Espaces Atypiques ne contient que leur blog, pas les annonces).
-3. **Ajout manuel** : copier-coller le texte d'une annonce dans la page.
+1. **Bouton « Envoyer au Nichoir »** (source principale). Sur la page du Nichoir, glisser le bouton
+   dans la barre de favoris. Ensuite, sur n'importe quelle page de résultats ou d'annonce
+   (LeBonCoin, SeLoger, PAP, Bien'ici, agences…), un clic envoie les annonces affichées au Nichoir.
+   Le script tourne dans ton navigateur, sur ce que tu as déjà sous les yeux, sans aucune requête
+   vers le site. Il lit en priorité les données structurées de la page (LeBonCoin, schema.org), puis
+   les cartes d'annonces, puis la page d'une annonce seule.
+2. **Ajout manuel** : copier-coller le texte d'une annonce dans la page.
+3. *Facultatif* : alertes e-mail lues en IMAP (`NICHOIR_IMAP_*`) et flux RSS (`NICHOIR_RSS_FEEDS`),
+   via `python -m nichoir ingest`.
 
 Chaque annonce est normalisée (prix, surface, terrain, pièces, chambres, commune, caractéristiques
 comme « sans vis-à-vis » ou « fibre »), localisée (adresse si connue, sinon centre de la commune),

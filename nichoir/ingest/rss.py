@@ -41,5 +41,5 @@ def fetch_feeds(conn_db, urls: list[str]) -> dict:
                 continue
             action, _ = db.upsert(conn_db, item)
             stats["annonces"] += 1
-            stats[action] += 1
+            stats[action + "s"] += 1
     return stats

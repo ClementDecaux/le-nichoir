@@ -26,6 +26,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _body(self) -> dict:
+        # JSON obligatoire : un site tiers ne peut pas poster ici sans requête préalable CORS,
+        # que ce serveur refuse (protection contre les envois venant d'autres pages).
+        if "application/json" not in (self.headers.get("Content-Type") or ""):
+            raise ValueError("Content-Type application/json attendu")
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b"{}"
         return json.loads(raw or b"{}")
@@ -60,10 +64,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802
         url = urllib.parse.urlsplit(self.path)
+        try:
+            body = self._body() if url.path != "/api/ingest" else {}
+        except ValueError as exc:
+            return self._json({"erreur": str(exc)}, 415)
         with _LOCK:
             conn = db.connect()
+            if url.path == "/api/listings/bulk":  # envoyé par le bouton du navigateur
+                return self._json(import_bulk(conn, body))
             if url.path == "/api/listings":  # ajout manuel (copier-coller d'une annonce)
-                body = self._body()
                 if not (body.get("text") or body.get("title")):
                     return self._json({"erreur": "texte de l'annonce manquant"}, 400)
                 action, lid = db.upsert(conn, body)
@@ -76,6 +85,34 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):  # journal plus discret
         print("  ", self.address_string(), fmt % args)
+
+
+BULK_FIELDS = ("url", "title", "text", "price", "surface", "land", "rooms", "bedrooms", "city",
+               "postcode", "lat", "lon", "photo", "source")
+
+
+def import_bulk(conn, body: dict) -> dict:
+    """Enregistre les annonces envoyées par le bouton « Envoyer au Nichoir »."""
+    from .normalize import parse_price
+    stats = {"ajoutées": 0, "fusionnées": 0, "ignorées": 0, "titres": []}
+    for raw in (body.get("listings") or [])[:300]:
+        if not isinstance(raw, dict):
+            continue
+        item = {k: raw.get(k) for k in BULK_FIELDS if raw.get(k) not in (None, "")}
+        for k in ("price", "surface", "land", "rooms", "lat", "lon"):
+            try:
+                item[k] = float(item[k]) if k in item else None
+            except (TypeError, ValueError):
+                item[k] = None
+        if item.get("price"):
+            item["price"] = int(item["price"])
+        if not (item.get("price") or parse_price(f"{item.get('title', '')} {item.get('text', '')}")):
+            stats["ignorées"] += 1
+            continue
+        action, _ = db.upsert(conn, item)
+        stats[action + "s"] += 1
+        stats["titres"].append(f"{action} : {(item.get('title') or '')[:90]}")
+    return stats
 
 
 def serve(port: int | None = None, host: str = "127.0.0.1") -> None:

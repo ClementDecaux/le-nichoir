@@ -175,6 +175,6 @@ def fetch_imap(conn_db, days: int = 30, limit: int = 300) -> dict:
             for item in listings:
                 action, _ = db.upsert(conn_db, item)
                 stats["annonces"] += 1
-                stats[action] += 1
+                stats[action + "s"] += 1
             db.mark_message(conn_db, msg_id)
     return stats

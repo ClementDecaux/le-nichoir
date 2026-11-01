@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Le Nichoir · import</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; color:#1f2a24; background:#f7f6f2; margin:0; display:grid; place-items:center; min-height:100vh; }
+  .box { background:#fff; border:1px solid #e3e6e1; border-radius:12px; padding:24px 28px; max-width:520px; }
+  h1 { font-size:18px; margin:0 0 8px; }
+  ul { padding-left:18px; color:#6b756f; font-size:13px; max-height:220px; overflow:auto; }
+  a { color:#3c5a99; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Le Nichoir</h1>
+  <p id="msg">En attente des annonces de la page…</p>
+  <ul id="items"></ul>
+  <p><a href="/">Ouvrir la recherche</a> · cette fenêtre se ferme toute seule.</p>
+</div>
+<script>
+let done = false;
+window.addEventListener("message", async (e) => {
+  const d = e.data;
+  if (done || !d || d.type !== "nichoir-listings" || !Array.isArray(d.listings)) return;
+  done = true;
+  try { e.source.postMessage("nichoir-ok", e.origin); } catch (_) {}
+  const host = (() => { try { return new URL(d.page).hostname; } catch (_) { return "?"; } })();
+  document.getElementById("msg").textContent = `${d.listings.length} annonce(s) reçue(s) de ${host}, enregistrement…`;
+  const r = await fetch("/api/listings/bulk", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({page: d.page, listings: d.listings.slice(0, 300)}),
+  });
+  const res = await r.json();
+  document.getElementById("msg").textContent = res.erreur ||
+    `${res.ajoutées} nouvelle(s), ${res.fusionnées} déjà connue(s) ou fusionnée(s), ${res.ignorées} ignorée(s) (sans prix).`;
+  document.getElementById("items").innerHTML = (res.titres || []).map(t => `<li>${t.replace(/[<>&]/g, "")}</li>`).join("");
+  setTimeout(() => window.close(), 6000);
+});
+</script>
+</body>
+</html>

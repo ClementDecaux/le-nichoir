@@ -41,6 +41,7 @@
   .links { font-size:12px; margin-top:6px; }
   .links a { color:var(--accent); margin-right:10px; }
   .score { float:right; font-size:12px; color:var(--muted); }
+  a.bookmarklet { display:inline-block; padding:5px 12px; border-radius:8px; border:1px dashed var(--accent); color:var(--accent); text-decoration:none; font-weight:600; cursor:grab; }
   .demo { font-size:11px; color:#fff; background:#9a9a9a; border-radius:4px; padding:0 5px; margin-left:6px; vertical-align:middle; }
   details { margin-top:8px; font-size:13px; }
   details textarea, details input { width:100%; margin:4px 0; font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; }
@@ -57,7 +58,8 @@
   </form>
   <div class="toolbar">
     <label><input type="checkbox" id="demo" checked> inclure les annonces d'exemple</label>
-    <button type="button" class="secondary" id="ingest">Relever les alertes e-mail</button>
+    <a id="bm" class="bookmarklet" href="#" title="Glisse ce bouton dans ta barre de favoris">➕ Envoyer au Nichoir</a>
+    <span>← glisse ce bouton dans ta barre de favoris, puis clique dessus sur une page d'annonces (LeBonCoin, SeLoger, PAP, Bien'ici…)</span>
     <span id="status"></span>
   </div>
   <div class="chips" id="chips"></div>
@@ -187,12 +189,15 @@ async function run(e) {
 
 $("#search").addEventListener("submit", run);
 $("#q").addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run(e); });
-$("#ingest").addEventListener("click", async () => {
-  $("#status").textContent = "Lecture des alertes…";
-  const r = await (await fetch("/api/ingest", {method: "POST"})).json();
-  $("#status").textContent = r.email?.erreur || `E-mail : ${JSON.stringify(r.email)}${r.rss ? " · RSS : " + JSON.stringify(r.rss) : ""}`;
-  run();
+fetch("/collect.js").then(r => r.text()).then(code => {
+  code = code.replace(/\/\*[\s\S]*?\*\//g, "").replace("__NICHOIR_ORIGIN__", location.origin);
+  $("#bm").href = "javascript:" + encodeURIComponent(code);
 });
+$("#bm").addEventListener("click", e => {
+  e.preventDefault();
+  $("#status").textContent = "Glisse ce bouton dans ta barre de favoris (ne clique pas ici).";
+});
+window.addEventListener("focus", () => { if (document.querySelector(".card, .empty")) run(); });
 $("#add").addEventListener("click", async () => {
   const body = {url: $("#add-url").value || null, text: $("#add-text").value};
   const r = await (await fetch("/api/listings", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})).json();

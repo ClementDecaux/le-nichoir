@@ -156,3 +156,26 @@ class SearchTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BulkImportTest(unittest.TestCase):
+    """Annonces envoyées par le bouton du navigateur."""
+
+    def test_import_and_merge(self):
+        from nichoir import db, server
+        conn = db.connect(":memory:")
+        with mock.patch("nichoir.geo.geocode", return_value={"lat": 45.72, "lon": 4.70, "citycode": "69028",
+                                                            "city": "Brindas", "score": 0.9}):
+            first = server.import_bulk(conn, {"listings": [
+                {"url": "https://www.leboncoin.fr/ad/ventes_immobilieres/1", "title": "Maison 112 m²",
+                 "text": "Maison 112 m² terrain 900 m²", "price": "339000", "city": "Brindas", "postcode": "69126"},
+                {"url": "https://x.invalid/2", "title": "Prix sur demande", "text": "T3 70 m²"},
+            ]})
+            again = server.import_bulk(conn, {"listings": [
+                {"url": "https://www.bienici.com/annonce/vente/brindas/3", "title": "Maison 112 m² Brindas",
+                 "text": "Maison 112 m² terrain 900 m²", "price": 339000, "city": "Brindas", "postcode": "69126"}]})
+        self.assertEqual((first["ajoutées"], first["ignorées"]), (1, 1))
+        self.assertEqual(again["fusionnées"], 1)
+        (row,) = db.all_listings(conn)
+        self.assertEqual(len(row["links"]), 2)
+        self.assertEqual(row["source"], "LeBonCoin")
