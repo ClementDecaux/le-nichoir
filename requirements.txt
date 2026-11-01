@@ -1,0 +1,4 @@
+# Le Nichoir ne dépend que de la bibliothèque standard de Python (3.10+).
+# Optionnel : traduction des recherches en langage naturel par Claude
+# (sinon un analyseur à règles, en français, prend le relais).
+anthropic>=1.0
