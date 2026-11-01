@@ -42,10 +42,21 @@ def car_minutes(origin: tuple[float, float], targets: list[tuple[float, float]])
     return out
 
 
+def _network():
+    """Réseau TCL, ou None si les données n'ont pas pu être téléchargées (trajets voiture seuls)."""
+    try:
+        return tcl.network()
+    except RuntimeError as exc:
+        print("Données TCL indisponibles, trajets en voiture seulement :", exc)
+        return None
+
+
 @lru_cache(maxsize=32)
 def _transit_index(dest: tuple[float, float]):
     """Pour une destination : temps TCL depuis chaque arrêt, et depuis chaque parc relais."""
-    net = tcl.network()
+    net = _network()
+    if net is None:
+        return {}, []
     times = net.times_to(*dest)
     relays = []
     for pr in tcl.parcs_relais():
@@ -61,7 +72,9 @@ def _transit_index(dest: tuple[float, float]):
 
 
 def transit_only(origin: tuple[float, float], dest: tuple[float, float]) -> Trip | None:
-    net = tcl.network()
+    net = _network()
+    if net is None:
+        return None
     times, _ = _transit_index(dest)
     best = None
     for sid, d in net.stops_near(*origin, MAX_WALK_TO_STOP_KM):

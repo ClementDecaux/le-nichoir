@@ -42,12 +42,23 @@ STOP_SNAP_KM = 0.08  # distance max entre un arrêt et le tracé de sa ligne
 MODEL_VERSION = 2
 
 
+WFS_PAGE = 500  # par pages, pour éviter les téléchargements de 20 Mo coupés en route
+
+
 def _wfs(layer: str, ttl: float = 86400 * 7) -> list[dict]:
-    data = http.fetch_json(WFS, ttl=ttl, timeout=180, params={
-        "SERVICE": "WFS", "VERSION": "2.0.0", "request": "GetFeature",
-        "typename": LAYERS[layer], "outputFormat": "application/json", "SRSNAME": "EPSG:4326",
-    })
-    return data["features"]
+    features: list[dict] = []
+    start = 0
+    while True:
+        data = http.fetch_json(WFS, ttl=ttl, timeout=180, params={
+            "SERVICE": "WFS", "VERSION": "2.0.0", "request": "GetFeature",
+            "typename": LAYERS[layer], "outputFormat": "application/json", "SRSNAME": "EPSG:4326",
+            "count": WFS_PAGE, "startIndex": start, "sortBy": "gid",
+        })
+        page = data.get("features") or []
+        features.extend(page)
+        if len(page) < WFS_PAGE:
+            return features
+        start += WFS_PAGE
 
 
 def parcs_relais() -> list[dict]:
