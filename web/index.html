@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Le Nichoir</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root { --ink:#1f2a24; --muted:#6b756f; --line:#e3e6e1; --bg:#f7f6f2; --card:#fff;
+          --green:#2f7d4f; --amber:#a86a12; --accent:#3c5a99; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
+  header { padding:16px 24px 12px; border-bottom:1px solid var(--line); background:#fff; }
+  h1 { margin:0 0 8px; font-size:20px; letter-spacing:.2px; }
+  h1 span { color:var(--muted); font-weight:400; font-size:14px; margin-left:8px; }
+  form#search { display:flex; gap:8px; align-items:stretch; }
+  textarea { flex:1; min-height:58px; padding:10px 12px; font:inherit; border:1px solid var(--line); border-radius:8px; resize:vertical; }
+  button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--accent); }
+  button:disabled { opacity:.6; cursor:wait; }
+  .toolbar { display:flex; gap:12px; align-items:center; margin-top:8px; color:var(--muted); font-size:13px; flex-wrap:wrap; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .chip { background:#eef2f8; color:#2c4170; padding:2px 9px; border-radius:999px; font-size:13px; }
+  .chip.req { background:#e7f3ec; color:var(--green); }
+  .chip.pref { background:#f6efe2; color:var(--amber); }
+  main { display:grid; grid-template-columns: minmax(380px, 1fr) 1.1fr; height: calc(100vh - 150px); }
+  #list { overflow:auto; padding:12px 16px 40px; }
+  #map { height:100%; border-left:1px solid var(--line); }
+  .summary { color:var(--muted); font-size:13px; margin:4px 0 10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; cursor:pointer; }
+  .card:hover, .card.active { border-color:var(--accent); }
+  .card h3 { margin:0; font-size:15px; }
+  .meta { color:var(--muted); font-size:13px; margin:2px 0 6px; }
+  .price { font-weight:600; }
+  .trip { font-size:13px; margin:6px 0; padding:6px 8px; background:#f4f6fa; border-radius:6px; }
+  .trip b { color:var(--accent); }
+  .trip small { display:block; color:var(--muted); }
+  ul.checks { list-style:none; padding:0; margin:4px 0 0; font-size:13px; }
+  ul.checks li.ok::before { content:"✓ "; color:var(--green); font-weight:700; }
+  ul.checks li.todo::before { content:"? "; color:var(--amber); font-weight:700; }
+  .links { font-size:12px; margin-top:6px; }
+  .links a { color:var(--accent); margin-right:10px; }
+  .score { float:right; font-size:12px; color:var(--muted); }
+  a.bookmarklet { display:inline-block; padding:5px 12px; border-radius:8px; border:1px dashed var(--accent); color:var(--accent); text-decoration:none; font-weight:600; cursor:grab; }
+  .demo { font-size:11px; color:#fff; background:#9a9a9a; border-radius:4px; padding:0 5px; margin-left:6px; vertical-align:middle; }
+  details { margin-top:8px; font-size:13px; }
+  details textarea, details input { width:100%; margin:4px 0; font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; }
+  .empty { color:var(--muted); padding:30px 0; text-align:center; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; height:auto; } #map { height:420px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Le Nichoir <span>toutes les annonces, vos critères, en langage naturel</span></h1>
+  <form id="search">
+    <textarea id="q" name="q">Maison à 350 000 € max, sans vis-à-vis, avec la fibre, à moins de 45 min de la Grande Halle à Lyon en combo transport voiture. Ça peut être en pleine nature, dans le sud-ouest de Lyon.</textarea>
+    <button type="submit" id="go">Chercher</button>
+  </form>
+  <div class="toolbar">
+    <label><input type="checkbox" id="demo" checked> inclure les annonces d'exemple</label>
+    <a id="bm" class="bookmarklet" href="#" title="Glisse ce bouton dans ta barre de favoris">➕ Envoyer au Nichoir</a>
+    <span>← glisse ce bouton dans ta barre de favoris, puis clique dessus sur une page d'annonces (LeBonCoin, SeLoger, PAP, Bien'ici…)</span>
+    <span id="status"></span>
+  </div>
+  <div class="chips" id="chips"></div>
+</header>
+<main>
+  <section id="list">
+    <div class="empty">Lancez une recherche.</div>
+    <details>
+      <summary>Ajouter une annonce à la main (copier-coller)</summary>
+      <input id="add-url" placeholder="Lien de l'annonce">
+      <textarea id="add-text" rows="5" placeholder="Titre, prix, surface, commune (code postal), description…"></textarea>
+      <button type="button" class="secondary" id="add">Ajouter</button>
+    </details>
+  </section>
+  <div id="map"></div>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtPrice = (p) => p ? p.toLocaleString("fr-FR") + " €" : "prix ?";
+const FEAT = {sans_vis_a_vis:"sans vis-à-vis", fibre:"fibre", jardin:"jardin", nature:"nature", garage:"garage",
+              atypique:"atypique", piscine:"piscine", sans_travaux:"sans travaux"};
+const MODE = {"voiture":"voiture", "tcl":"TCL", "voiture+tcl":"voiture + P+R"};
+
+const map = L.map("map").setView([45.73, 4.78], 11);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {maxZoom: 18, attribution: "© contributeurs OpenStreetMap"}).addTo(map);
+const layer = L.layerGroup().addTo(map);
+const markers = {};
+
+fetch("/api/relais").then(r => r.json()).then(relais => {
+  for (const p of relais) {
+    L.circleMarker([p.lat, p.lon], {radius: 5, color: "#c0392b", weight: 2, fillOpacity: .6})
+      .bindTooltip(`P+R ${esc(p.nom)} (${p.capacite ?? "?"} places)`).addTo(map);
+  }
+}).catch(() => {});
+
+function chips(c) {
+  const out = [];
+  if (c.budget_max) out.push(`≤ ${fmtPrice(c.budget_max)}`);
+  if (c.types?.length) out.push(c.types.join(" ou "));
+  if (c.surface_min) out.push(`≥ ${c.surface_min} m²`);
+  if (c.chambres_min) out.push(`≥ ${c.chambres_min} chambres`);
+  if (c.terrain_min) out.push(`terrain ≥ ${c.terrain_min} m²`);
+  for (const t of c.trajets || []) out.push(`≤ ${t.max_minutes} min de ${t.lieu} (${t.modes.map(m => MODE[m]).join(", ")})`);
+  for (const p of c.proximites || []) out.push(`${p.lieu} ${p.max_km ? "≤ " + p.max_km + " km" : ""} ${p.max_minutes_voiture ? "≤ " + p.max_minutes_voiture + " min" : ""}`);
+  if (c.secteur) out.push(`secteur ${c.secteur} de Lyon`);
+  let html = out.map(x => `<span class="chip">${esc(x)}</span>`).join("");
+  html += (c.exigences || []).map(f => `<span class="chip req">exigé : ${FEAT[f] || f}</span>`).join("");
+  html += (c.preferences || []).map(f => `<span class="chip pref">bonus : ${FEAT[f] || f}</span>`).join("");
+  if (c.moteur) html += `<span class="chip" title="moteur d'analyse">compris par : ${esc(c.moteur)}</span>`;
+  $("#chips").innerHTML = html;
+}
+
+function card(r) {
+  const ev = r.evaluation;
+  const trips = ev.trajets.map(t => {
+    const b = t.best;
+    const others = Object.values(t.modes).filter(m => m.mode !== b.mode)
+      .map(m => `${MODE[m.mode]} ${m.minutes} min`).join(" · ");
+    return `<div class="trip"><b>${b.minutes} min</b> jusqu'à ${esc(t.lieu)} en ${MODE[b.mode]}${t.approx ? " (≈)" : ""}
+      <small>${esc(b.detail)}</small>${others ? `<small>Autres : ${esc(others)}</small>` : ""}</div>`;
+  }).join("");
+  const facts = [r.type, r.surface && `${r.surface} m²`, r.rooms && `${r.rooms} p.`,
+                 r.bedrooms && `${r.bedrooms} ch.`, r.land && `terrain ${r.land} m²`].filter(Boolean).join(" · ");
+  const links = (r.links || []).map(l => l.url && !l.url.includes(".invalid")
+      ? `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.source)}</a>` : `<span>${esc(l.source)}</span>`).join("");
+  return `<div class="card" data-id="${r.id}">
+    <span class="score" title="score de pertinence">${ev.score}</span>
+    <h3>${esc(r.title)}${r.demo ? '<span class="demo">exemple</span>' : ""}</h3>
+    <div class="meta"><span class="price">${fmtPrice(r.price)}</span> · ${esc(r.city || "commune ?")} ${esc(r.postcode || "")}${facts ? " · " + esc(facts) : ""}</div>
+    ${trips}
+    <ul class="checks">
+      ${ev.proximites.map(x => `<li class="ok">${esc(x)}</li>`).join("")}
+      ${ev.ok.map(x => `<li class="ok">${esc(x)}</li>`).join("")}
+      ${ev.a_verifier.map(x => `<li class="todo">${esc(x)}</li>`).join("")}
+    </ul>
+    <div class="links">${links}${(r.links || []).length > 1 ? ` <small>(${r.links.length} publications fusionnées)</small>` : ""}</div>
+  </div>`;
+}
+
+function render(data) {
+  chips(data.contraintes);
+  layer.clearLayers();
+  const res = data.resultats;
+  const head = `<div class="summary">${res.length} annonce(s) retenue(s), ${data.exclues} écartée(s).</div>`;
+  $("#list").querySelectorAll(".card, .summary, .empty").forEach(e => e.remove());
+  $("#list").insertAdjacentHTML("afterbegin", head + (res.length ? res.map(card).join("") : '<div class="empty">Aucune annonce ne correspond.</div>'));
+  const bounds = [];
+  for (const [name, p] of Object.entries(data.lieux || {})) {
+    if (!p) continue;
+    L.marker([p.lat, p.lon], {title: p.label}).bindTooltip(esc(p.label), {permanent: true, direction: "top"}).addTo(layer);
+    bounds.push([p.lat, p.lon]);
+  }
+  for (const r of res) {
+    if (!r.lat) continue;
+    const m = L.circleMarker([r.lat, r.lon], {radius: 8, color: "#3c5a99", fillColor: "#5b7bc4", fillOpacity: .8})
+      .bindPopup(`<b>${esc(r.title)}</b><br>${fmtPrice(r.price)} · ${esc(r.city || "")}`).addTo(layer);
+    markers[r.id] = m;
+    bounds.push([r.lat, r.lon]);
+  }
+  if (bounds.length) map.fitBounds(bounds, {padding: [30, 30], maxZoom: 13});
+  document.querySelectorAll(".card").forEach(el => el.addEventListener("click", () => {
+    document.querySelectorAll(".card.active").forEach(x => x.classList.remove("active"));
+    el.classList.add("active");
+    const m = markers[el.dataset.id];
+    if (m) { map.setView(m.getLatLng(), 13); m.openPopup(); }
+  }));
+}
+
+async function run(e) {
+  e?.preventDefault();
+  $("#go").disabled = true;
+  $("#status").textContent = "Calcul des trajets…";
+  try {
+    const url = `/api/search?q=${encodeURIComponent($("#q").value)}&demo=${$("#demo").checked ? 1 : 0}`;
+    const data = await (await fetch(url)).json();
+    render(data);
+    $("#status").textContent = "";
+  } catch (err) {
+    $("#status").textContent = "Erreur : " + err;
+  } finally {
+    $("#go").disabled = false;
+  }
+}
+
+$("#search").addEventListener("submit", run);
+$("#q").addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run(e); });
+fetch("/collect.js").then(r => r.text()).then(code => {
+  code = code.replace(/\/\*[\s\S]*?\*\//g, "").replace("__NICHOIR_ORIGIN__", location.origin);
+  $("#bm").href = "javascript:" + encodeURIComponent(code);
+});
+$("#bm").addEventListener("click", e => {
+  e.preventDefault();
+  $("#status").textContent = "Glisse ce bouton dans ta barre de favoris (ne clique pas ici).";
+});
+window.addEventListener("focus", () => { if (document.querySelector(".card, .empty")) run(); });
+$("#add").addEventListener("click", async () => {
+  const body = {url: $("#add-url").value || null, text: $("#add-text").value};
+  const r = await (await fetch("/api/listings", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})).json();
+  $("#status").textContent = r.erreur || `Annonce ${r.action} (#${r.id})`;
+  $("#add-text").value = ""; $("#add-url").value = "";
+  run();
+});
+run();
+</script>
+</body>
+</html>
